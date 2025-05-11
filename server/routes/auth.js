@@ -2,18 +2,61 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mysql = require('mysql2');
 
-// Login route
+const db = mysql.createConnection({
+  host: 'localhost',
+  user: 'root',
+  password: '',
+  database: 'ums_db'
+});
+
+// Admin Registration
+router.post('/register/admin', async (req, res) => {
+  const { email, password, name } = req.body;
+  
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const query = 'INSERT INTO admins (email, password, name) VALUES (?, ?, ?)';
+    db.query(query, [email, hashedPassword, name], (err, result) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Error registering admin' });
+      }
+      res.status(201).json({ message: 'Admin registered successfully' });
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Student Registration
+router.post('/register/student', async (req, res) => {
+  const { studentId, email, password, name } = req.body;
+  
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const query = 'INSERT INTO students (student_id, email, password, name) VALUES (?, ?, ?, ?)';
+    db.query(query, [studentId, email, hashedPassword, name], (err, result) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Error registering student' });
+      }
+      res.status(201).json({ message: 'Student registered successfully' });
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Login
 router.post('/login', async (req, res) => {
   const { email, password, role } = req.body;
-  const db = req.app.locals.db;
   
-  if (!email || !password || !role) {
-    return res.status(400).json({ message: 'Please provide email, password and role' });
-  }
-
   let table;
-  let idField = 'id';
+  let idField = 'id'; // Default ID field name
   
   switch(role) {
     case 'admin':
@@ -31,36 +74,42 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid role' });
   }
   
+  const query = `SELECT * FROM ${table} WHERE email = ?`;
+  
   try {
-    const query = `SELECT * FROM ${table} WHERE email = ?`;
-    const [results] = await db.promise().query(query, [email]);
-    
-    if (results.length === 0) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-    
-    const user = results[0];
-    const isValidPassword = await bcrypt.compare(password, user.password);
-    
-    if (!isValidPassword) {
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-    
-    // Remove password from user object
-    delete user.password;
-    
-    const token = jwt.sign(
-      { id: user[idField], role },
-      process.env.JWT_SECRET || 'your-secret-key',
-      { expiresIn: '1h' }
-    );
-    
-    res.json({
-      token,
-      user: {
-        ...user,
-        role
+    db.query(query, [email], async (err, results) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Server error' });
       }
+      
+      if (results.length === 0) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      const user = results[0];
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      
+      if (!isValidPassword) {
+        return res.status(401).json({ message: 'Invalid credentials' });
+      }
+      
+      // Remove password from user object before sending
+      delete user.password;
+      
+      const token = jwt.sign(
+        { id: user[idField], role: role },
+        process.env.JWT_SECRET || 'your-secret-key',
+        { expiresIn: '1h' }
+      );
+      
+      res.json({
+        token,
+        user: {
+          ...user,
+          role: role
+        }
+      });
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -78,33 +127,45 @@ router.get('/verify', async (req, res) => {
   
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    const db = req.app.locals.db;
     
     let table;
+    let idField = 'id';
+    
     switch(decoded.role) {
       case 'admin':
         table = 'admins';
         break;
       case 'instructor':
         table = 'instructors';
+        idField = 'instructor_id';
         break;
       case 'student':
         table = 'students';
+        idField = 'student_id';
         break;
       default:
         return res.status(400).json({ message: 'Invalid role' });
     }
     
-    const [user] = await db.promise().query(`SELECT * FROM ${table} WHERE id = ?`, [decoded.id]);
+    const query = `SELECT * FROM ${table} WHERE ${idField} = ?`;
     
-    if (!user[0]) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-    
-    delete user[0].password;
-    res.json({
-      ...user[0],
-      role: decoded.role
+    db.query(query, [decoded.id], (err, results) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ message: 'Server error' });
+      }
+      
+      if (results.length === 0) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+      
+      const user = results[0];
+      delete user.password;
+      
+      res.json({
+        ...user,
+        role: decoded.role
+      });
     });
   } catch (error) {
     console.error('Token verification error:', error);

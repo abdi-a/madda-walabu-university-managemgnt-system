@@ -114,7 +114,9 @@ const StudentDashboard = () => {
             <Grid item xs={12} sm={4}>
               <Paper sx={{ p: 2, textAlign: 'center' }}>
                 <Typography variant="h6">Average Grade</Typography>
-                <Typography variant="h4">{stats.averageGrade.toFixed(1)}</Typography>
+                <Typography variant="h4">
+                  {typeof stats.averageGrade === 'number' ? stats.averageGrade.toFixed(1) : '0.0'}
+                </Typography>
               </Paper>
             </Grid>
           </Grid>

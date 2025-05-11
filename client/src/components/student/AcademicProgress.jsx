@@ -110,7 +110,7 @@ const AcademicProgress = () => {
             <Grid item xs={12} sm={6} md={4}>
               <StatCard
                 title="Current GPA"
-                value={progress.gpa.toFixed(2)}
+                value={typeof progress.gpa === 'number' ? progress.gpa.toFixed(2) : '0.00'}
                 icon={<GradeIcon color="primary" />}
                 subtitle="Cumulative Grade Point Average"
               />
@@ -230,7 +230,7 @@ const AcademicProgress = () => {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {progress.courseProgress.map((course) => (
+                      {(progress.courseProgress || []).map((course) => (
                         <TableRow key={course.id}>
                           <TableCell>{course.name}</TableCell>
                           <TableCell>
